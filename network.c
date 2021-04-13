@@ -15,6 +15,8 @@
 #include <netinet/ip.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
+#include <net/ethernet.h>
+#include <linux/if_ether.h>   // ETH_P_ARP = 0x0806, ETH_P_ALL = 0x0003
 #include <string.h>
 #include <unistd.h>
 
@@ -41,8 +43,8 @@ typedef struct _IP_HDR
 	unsigned char time2live;
 	unsigned char protocol;
 	unsigned short checksum;
-	unsigned long Source_IP_add;
-	unsigned long Dest_IP_add;
+	unsigned int Source_IP_add;
+	unsigned int Dest_IP_add;
 } IP_HDR;
 
 static char *protocols[8] = {"ICMP", "IGMP", "TCP", "UDP", "ENCAP", "OSPF", "SCTP", "UNDEFINED"};
@@ -51,8 +53,8 @@ typedef struct _TCP_HDR
 {
 	unsigned short source_p;
 	unsigned short dest_p;
-	unsigned long Sequence;
-	unsigned long Ack;
+	unsigned int Sequence;
+	unsigned int Ack;
 	unsigned char resrv1 :4;
 	unsigned char len :4;
 	unsigned char resrv2 :2;
@@ -75,7 +77,7 @@ typedef struct _ICMP_HDR
 	unsigned char type;
 	unsigned char code;
 	unsigned short checksum;
-	unsigned long rest;
+	unsigned int rest;
 } ICMP_HDR;
 
 static struct sockaddr_in sockAddr;
@@ -293,7 +295,7 @@ int NW_inint (char *ip_addr)
 	  int	in;
 
 
-	if ((sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) //Allocate TCP Socket
+	if ((sock = socket(PF_INET,SOCK_RAW,IPPROTO_ICMP)) < 0) //Allocate TCP Socket
 	{
 		printf("Error creating socket, error: %d\n", errno);
 		return -1;
@@ -333,8 +335,7 @@ int NW_inint (char *ip_addr)
 }
 
 int NW_read (int sock, char *buff, size_t buffLen) {
-	socklen_t st;
-	return recvfrom(sock, buff, buffLen, 0, (struct sockaddr *)&sockAddr, &st);
+	return recv(sock, buff, buffLen, 0);
 }
 
 void NW_close (int sock)
