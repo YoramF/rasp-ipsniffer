@@ -13,12 +13,17 @@
 #include <errno.h>
 #include <stddef.h>
 #include <netinet/ip.h>
+#include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
+#include <net/if.h>
 #include <linux/if_ether.h>   // ETH_P_ARP = 0x0806, ETH_P_ALL = 0x0003
+#include <linux/filter.h>
+#include <linux/if_packet.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 #define MAX_HEX 16
 #define SPACE 10
@@ -287,44 +292,54 @@ static void printData(unsigned char *buff, int length, char *printstr)
 	printf("%s\n", printstr);
 }
 
+int bindToInterface(int sock , char *device , int protocol) { 
+    struct sockaddr_ll sll;
+    struct ifreq ifr;
 
-int NW_inint (char *ip_addr)
+	bzero(&sll , sizeof(sll));
+    bzero(&ifr , sizeof(ifr)); 
+    strncpy((char *)ifr.ifr_name ,device , IFNAMSIZ); 
+	ifr.ifr_flags |= IFF_PROMISC;
+    if((ioctl(sock , SIOCGIFINDEX , &ifr)) == -1)
+    { 
+        printf("Failed to set device %s, error: %d\n", device, errno);
+        return -1;
+    }
+    sll.sll_family = AF_PACKET; 
+    sll.sll_ifindex = ifr.ifr_ifindex; 
+    sll.sll_protocol = htons(protocol); 
+    if((bind(sock , (struct sockaddr *)&sll , sizeof(sll))) ==-1)
+    {
+        printf("Failed to bind to device %s, error: %d\n", device, errno);
+        return -1;
+    }
+    return 0;
+} 
+
+
+int NW_inint (char *nw)
 {
 	  int	sock, j;
 	  int	stat;
 	  int	in;
+	  int one = 1;
+	  const int *val = &one;
+	  struct ifreq ethreq, interface;
 
-
-	if ((sock = socket(PF_INET,SOCK_RAW,IPPROTO_ICMP)) < 0) //Allocate TCP Socket
+	if ((sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP))) < 0)
 	{
 		printf("Error creating socket, error: %d\n", errno);
 		return -1;
 	}
 
-	memset(&sockAddr, 0, sizeof(sockAddr)); //clear socket address
-	sockAddr.sin_family = AF_INET;
-	sockAddr.sin_port = 0;
-	sockAddr.sin_addr.s_addr = inet_addr(ip_addr);
-
-
-	if ((stat = bind(sock, (struct sockaddr *) &sockAddr, sizeof(sockAddr))) < 0)
-	{
-		printf("Error calling bind(), error: %d\n", errno);
+	if (bindToInterface(sock, nw, IPPROTO_IP) < 0)
 		return -1;
-	}
 
 	printf("Binding successful");
 
 	j=1;
 	printf("\nSetting socket to sniff...");
-	/*
-	if (ioctl(sock, SIO_RCVALL, &j, sizeof(j), 0, 0, (LPDWORD) &in , 0 , 0) < 0)
-	{
-		printf("WSAIoctl() failed. Error: %d\n", errno);
-		return -1;
-	}
-	*/
-	printf("Socket set.");
+
 
 	//Begin
 	printf("\nStarted Sniffing\n");
@@ -351,6 +366,9 @@ void NW_Print_IP (char *buff, int len)
 	int i, k, l;
 	IP_HDR *ip_hdrp;
 	char	printstr[MAX_LINE+1];
+
+	// skip ethernet header
+	buff += 14;
 
 	/*
 	 * print IP Header
