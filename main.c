@@ -14,8 +14,8 @@
  *  This small project is an attempt from my side to return to programming after more than 20 years. What can be a better
  *  language to return to than C ?
  *
- *  The program recieves two parameters IP_Add Duration
- *    IP_Add - local IP address of the NW inerface you want to connect to
+ *  The program recieves two parameters Interface Duration
+ *    Interface - NW inerface you want to connect to
  *    Duration - time on second to let the program run and capture traffic
  *
  *    (*) This program needs ADMIN privilages to run
