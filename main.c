@@ -32,6 +32,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "network.h"
 
@@ -62,6 +64,8 @@ typedef struct _thread_data_t {
   double stuff;
 } thread_data_t;
 
+static 	in_addr_t	filterIP = 0;
+
 /* Write thread function */
 void *write_trd_func(void *arg)
 {
@@ -90,55 +94,58 @@ void *write_trd_func(void *arg)
 			exit_program = 1;
 			pthread_exit(&wrt_trd_exit);
 		}
-		buffcnt = ((buffcnt+1)%MAX_COUNT); // continue counting regardless of s_queue updates
 
-		/*
-		 * We need to fill the next buffer.
-		 * But first check to see if next available buffer is ready - otherwise just dump the new buffer
-		 * Since we are accessing shared queue we need to use Mutex to handle the that.
-		 */
-		mutexloc = bufflock;
-		if ((s = pthread_mutex_lock(&s_queue[mutexloc].mutex)) == 0)
-		{
-			if (s_queue[bufflock].empty == 0)
+		// check if we need to filter this packet, if we do, skip processing and read next packet
+		if (!NW_skipPacket(internal_buff, filterIP)) {
+			buffcnt = ((buffcnt+1)%MAX_COUNT); // continue counting regardless of s_queue updates
+
+			/*
+			* We need to fill the next buffer.
+			* But first check to see if next available buffer is ready - otherwise just dump the new buffer
+			* Since we are accessing shared queue we need to use Mutex to handle the that.
+			*/
+			mutexloc = bufflock;
+			if ((s = pthread_mutex_lock(&s_queue[mutexloc].mutex)) == 0)
 			{
-				s_queue[bufflock].empty = 1;
-				s_queue[bufflock].seq = buffcnt;
-				s_queue[bufflock].bytes = bytes;
-				memcpy(s_queue[bufflock].buff, internal_buff, bytes);
+				if (s_queue[bufflock].empty == 0)
+				{
+					s_queue[bufflock].empty = 1;
+					s_queue[bufflock].seq = buffcnt;
+					s_queue[bufflock].bytes = bytes;
+					memcpy(s_queue[bufflock].buff, internal_buff, bytes);
 
-				/*
-				 * if reading thread is waiting for semaphore then set it
-				 */
-				if ((sem_getvalue(&q_sem, &s)) < 0)
-				{
-					printf("%s, failed to get queue semaphore, %d\n", trd_name[id], errno);
-					wrt_trd_exit = -1;
-					exit_program = 1;
-					pthread_exit(&wrt_trd_exit);
-				}
-				else if (s < 1)
-				{
-					if (sem_post(&q_sem) < 0)
+					/*
+					* if reading thread is waiting for semaphore then set it
+					*/
+					if ((sem_getvalue(&q_sem, &s)) < 0)
 					{
-						printf("%s, failed to set queue semaphore, %d\n", trd_name[id], errno);
+						printf("%s, failed to get queue semaphore, %d\n", trd_name[id], errno);
 						wrt_trd_exit = -1;
 						exit_program = 1;
 						pthread_exit(&wrt_trd_exit);
 					}
+					else if (s < 1)
+					{
+						if (sem_post(&q_sem) < 0)
+						{
+							printf("%s, failed to set queue semaphore, %d\n", trd_name[id], errno);
+							wrt_trd_exit = -1;
+							exit_program = 1;
+							pthread_exit(&wrt_trd_exit);
+						}
 
+					}
+
+					bufflock = ((bufflock+1)%MAX_QUEUE); // cyclick buffer
 				}
+				else printf("%s, no empty buffer in queue dump record and releasing mutex\n", trd_name[id]);
 
-				bufflock = ((bufflock+1)%MAX_QUEUE); // cyclick buffer
+				if ((s = pthread_mutex_unlock(&s_queue[mutexloc].mutex)) != 0)
+					printf("%s, failed to unlock buffer[%d] in shared queue. Error: %d\n", trd_name[id], bufflock, s);
 			}
-			else printf("%s, no empty buffer in queue dump record and releasing mutex\n", trd_name[id]);
-
-			if ((s = pthread_mutex_unlock(&s_queue[mutexloc].mutex)) != 0)
-				printf("%s, failed to unlock buffer[%d] in shared queue. Error: %d\n", trd_name[id], bufflock, s);
+			else
+				printf("%s, failed to lock buffer[%d] in shared queue. Error: %d\n", trd_name[id], bufflock, s);
 		}
-		else
-			printf("%s, failed to lock buffer[%d] in shared queue. Error: %d\n", trd_name[id], bufflock, s);
-
 	}
 
 	/*
@@ -243,23 +250,36 @@ int main (int argc, char *argv[])
 	pthread_t 		rd_t, wrt_t;
 	int 			s, i;
 	int 			*trd_exit;
-
 	int				sock;
+	char			interface[100];
+	int				time_s = 60;
+	int 			opt;
 
-	char			local_ip[100];
-	int				time_s;
+	// set default interface
+	strcpy(interface, "lo");
 
-	if (argc < 3)
-	{
-		printf("USage: IPSniffer IP_Add Time\n");
-		printf("IP_add - IP address (x.x.x.x) of the NW interface you want to sniff\n");
-		printf("Time - Sniffing duration in seconds\n");
-		return -1;
+	// get commad line input
+	if (argc > 1) {
+		while ((opt = getopt(argc, argv, "f:i:t:")) > 0) { 
+			switch (opt) {
+				case 'i':
+					 strncpy(interface, optarg, sizeof(interface)-1);
+					break;
+				case 't':
+					time_s = atoi(optarg);
+					break;
+				case 'f':
+					filterIP = inet_addr(optarg);
+					break;
+				default:
+					printf("wrong input\n");
+					printf("USage: [-i Interface] [-f Filter IP address (x.x.x.x)] [-t Time (sec)]\n");
+				return -1;
+			}
+		}
 	}
-	sscanf(argv[1], "%s", local_ip);
-	sscanf(argv[2], "%d", &time_s);
 
-	if ((sock = NW_inint (local_ip)) < 0)
+	if ((sock = NW_inint (interface)) < 0)
 		return -1;
 
 	rd.tid = 0;

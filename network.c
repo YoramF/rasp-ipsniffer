@@ -21,6 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <stdbool.h>
 
 #define MAX_HEX 16
 #define SPACE 10
@@ -292,11 +293,6 @@ static void printData(unsigned char *buff, int length, char *printstr)
 int NW_inint (char *nw)
 {
 	int	sock;
-	int	stat;
-	int	in;
-	int one = 1;
-	const int *val = &one;
-	struct ifreq ethreq, interface;
 
 	if ((sock = socket(AF_PACKET , SOCK_RAW , htons(ETH_P_ALL))) < 0)
 	{
@@ -360,5 +356,16 @@ void NW_Print_IP (char *buff, int len)
 		  printData((unsigned char *)&buff[i], k, printstr);
 		  i += k;
 	}
+}
+
+// return true if packet needs to be filtered out
+bool NW_skipPacket (char *buf, in_addr_t ip) {
+	IP_HDR *ip_hdrp;
+
+	// skip ethernet header
+	buf += 14;
+	ip_hdrp = (IP_HDR *)buf;
+
+	return ((ip == (in_addr_t)ip_hdrp->Source_IP_add) || (ip == (in_addr_t)ip_hdrp->Dest_IP_add));
 }
 

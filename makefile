@@ -1,9 +1,21 @@
+CFILES = $(wildcard *.c)
+OFILES = $(CFILES:%.c=%.o)
+OFILES_D = $(CFILES:%.c=%_d.o)
+LIB = -l pthread
+GCCFLAGS = -O3 -s
+GCCFLAGS_D = -g
 
-ipsniffer:	main.o network.o
-	gcc -s -o ./bin/ipsniffer network.o main.o -l pthread
+ipsniffer:	$(OFILES)
+	gcc $(GCCFLAGS) -o ./bin/ipsniffer $(OFILES) $(LIB)
 
-main.o:	main.c network.c network.h
-	gcc -c -O3 main.c 
+ipsniffer_d: $(OFILES_D)
+	gcc $(GCCFLAGS_D) -o ./bin/ipsniffer_d $(OFILES_D) $(LIB)
 
-network.o:	network.c network.h
-	gcc -c -O3 network.c
+%.o: %.c
+	gcc $(GCCFLAGS) -c $< -o $@
+
+%_d.o: %.c
+	gcc $(GCCFLAGS_D) -c $< -o $@
+
+clean:
+	rm *.o
