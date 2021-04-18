@@ -260,7 +260,7 @@ int main (int argc, char *argv[])
 
 	// get commad line input
 	if (argc > 1) {
-		while ((opt = getopt(argc, argv, "f:i:t:")) > 0) { 
+		while ((opt = getopt(argc, argv, "hf:i:t:")) > 0) { 
 			switch (opt) {
 				case 'i':
 					 strncpy(interface, optarg, sizeof(interface)-1);
@@ -271,8 +271,8 @@ int main (int argc, char *argv[])
 				case 'f':
 					filterIP = inet_addr(optarg);
 					break;
+				case 'h':
 				default:
-					printf("wrong input\n");
 					printf("USage: [-i Interface] [-f Filter IP address (x.x.x.x)] [-t Time (sec)]\n");
 				return -1;
 			}
